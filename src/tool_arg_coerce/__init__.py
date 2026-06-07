@@ -51,9 +51,7 @@ class CoerceError(ValueError):
         self.path = path
         self.value = value
         self.target_type = target_type
-        super().__init__(
-            f"{path}: could not coerce {value!r} to {target_type}"
-        )
+        super().__init__(f"{path}: could not coerce {value!r} to {target_type}")
 
 
 @dataclass
@@ -207,9 +205,7 @@ def _coerce_recursive(
             if sub is None or sub.get("type") is None:
                 nested_out[k] = v
                 continue
-            nv, nw = _coerce_recursive(
-                v, sub, path=f"{path}.{k}", strict=strict
-            )
+            nv, nw = _coerce_recursive(v, sub, path=f"{path}.{k}", strict=strict)
             nested_out[k] = nv
             nested_warnings.extend(nw)
         return nested_out, nested_warnings

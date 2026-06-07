@@ -65,8 +65,17 @@ def test_int_to_number_passthrough():
 
 
 @pytest.mark.parametrize(
-    "s, expected", [("true", True), ("True", True), ("1", True), ("yes", True),
-                    ("false", False), ("FALSE", False), ("0", False), ("no", False)],
+    "s, expected",
+    [
+        ("true", True),
+        ("True", True),
+        ("1", True),
+        ("yes", True),
+        ("false", False),
+        ("FALSE", False),
+        ("0", False),
+        ("no", False),
+    ],
 )
 def test_bool_truthy_falsy_strings(s, expected):
     v, w = coerce_value(s, "boolean")
@@ -191,21 +200,30 @@ def test_coerce_no_op_when_already_right_type():
 
 
 def test_coerce_array_items_coerced():
-    schema = {"type": "object", "properties": {
-        "ids": {"type": "array", "items": {"type": "integer"}},
-    }}
+    schema = {
+        "type": "object",
+        "properties": {
+            "ids": {"type": "array", "items": {"type": "integer"}},
+        },
+    }
     fixed, w = coerce({"ids": ["1", "2", "3"]}, schema)
     assert fixed["ids"] == [1, 2, 3]
     assert len(w) == 3
 
 
 def test_coerce_nested_object_recursed():
-    schema = {"type": "object", "properties": {
-        "filter": {"type": "object", "properties": {
-            "active": {"type": "boolean"},
-            "n": {"type": "integer"},
-        }},
-    }}
+    schema = {
+        "type": "object",
+        "properties": {
+            "filter": {
+                "type": "object",
+                "properties": {
+                    "active": {"type": "boolean"},
+                    "n": {"type": "integer"},
+                },
+            },
+        },
+    }
     fixed, w = coerce({"filter": {"active": "yes", "n": "10"}}, schema)
     assert fixed == {"filter": {"active": True, "n": 10}}
 
@@ -225,3 +243,66 @@ def test_coerce_returns_warnings_with_paths():
     args = {"n": "5"}
     _, warnings = coerce(args, SCHEMA)
     assert any("$.n" in w for w in warnings)
+
+
+# ---- additional coverage -------------------------------------------------
+
+
+def test_string_target_uncoercible_falls_back():
+    # A list has no obvious string form; default mode returns it untouched.
+    v, w = coerce_value([1, 2], "string")
+    assert v == [1, 2]
+    assert w == []
+
+
+def test_string_target_uncoercible_strict_raises():
+    with pytest.raises(CoerceError):
+        coerce_value([1, 2], "string", strict=True)
+
+
+def test_unknown_target_type_passthrough():
+    # Unknown JSON Schema type names return the value unchanged, no warning.
+    v, w = coerce_value("anything", "geo-point")
+    assert v == "anything"
+    assert w == []
+
+
+def test_null_uncoercible_falls_back():
+    v, w = coerce_value("not-null", "null")
+    assert v == "not-null"
+    assert w == []
+
+
+def test_json_string_to_object_wrong_shape_falls_back():
+    # Valid JSON, but parses to a list when an object was wanted.
+    v, w = coerce_value("[1, 2]", "object")
+    assert v == "[1, 2]"
+    assert w == []
+
+
+def test_coerce_array_items_strict_reports_index_path():
+    schema = {
+        "type": "object",
+        "properties": {"ids": {"type": "array", "items": {"type": "integer"}}},
+    }
+    with pytest.raises(CoerceError) as exc:
+        coerce({"ids": ["1", "oops"]}, schema, strict=True)
+    assert exc.value.path == "$.ids[1]"
+
+
+def test_coerce_nested_array_of_objects():
+    schema = {
+        "type": "object",
+        "properties": {
+            "rows": {
+                "type": "array",
+                "items": {
+                    "type": "object",
+                    "properties": {"n": {"type": "integer"}},
+                },
+            }
+        },
+    }
+    fixed, w = coerce({"rows": [{"n": "1"}, {"n": "2"}]}, schema)
+    assert fixed == {"rows": [{"n": 1}, {"n": 2}]}
+    assert len(w) == 2
