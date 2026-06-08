@@ -306,3 +306,80 @@ def test_coerce_nested_array_of_objects():
     fixed, w = coerce({"rows": [{"n": "1"}, {"n": "2"}]}, schema)
     assert fixed == {"rows": [{"n": 1}, {"n": 2}]}
     assert len(w) == 2
+
+
+# ---- branch coverage: fallbacks & numeric edge cases ---------------------
+
+
+def test_array_json_string_wrong_shape_falls_back():
+    # Valid JSON, but parses to an object when an array was wanted.
+    v, w = coerce_value('{"a":1}', "array")
+    assert v == '{"a":1}'
+    assert w == []
+
+
+def test_coerce_non_dict_args_non_strict_passthrough():
+    # Non-strict mode returns the non-dict args unchanged with no warnings.
+    v, w = coerce("not a dict", SCHEMA)  # type: ignore[arg-type]
+    assert v == "not a dict"
+    assert w == []
+
+
+def test_float_to_int_when_integral():
+    v, w = coerce_value(5.0, "integer")
+    assert v == 5 and isinstance(v, int)
+    assert w  # warning recorded
+
+
+def test_float_non_integral_to_int_falls_back():
+    v, w = coerce_value(5.5, "integer")
+    assert v == 5.5
+    assert w == []
+
+
+def test_float_non_integral_to_int_strict_raises():
+    with pytest.raises(CoerceError):
+        coerce_value(5.5, "integer", strict=True)
+
+
+def test_uncoercible_type_to_int_falls_back():
+    # A list has no integer form; default mode returns it untouched.
+    v, w = coerce_value([1], "integer")
+    assert v == [1]
+    assert w == []
+
+
+def test_bool_not_treated_as_number():
+    # bool is an int subclass; we explicitly reject it for number too.
+    v, w = coerce_value(True, "number")
+    assert v is True
+    assert w == []
+
+
+def test_unparseable_string_to_number_falls_back():
+    v, w = coerce_value("abc", "number")
+    assert v == "abc"
+    assert w == []
+
+
+def test_uncoercible_type_to_number_falls_back():
+    v, w = coerce_value([1], "number")
+    assert v == [1]
+    assert w == []
+
+
+def test_uncoercible_type_to_bool_falls_back():
+    v, w = coerce_value([1], "boolean")
+    assert v == [1]
+    assert w == []
+
+
+def test_coerce_value_custom_path_in_warning():
+    _, w = coerce_value("5", "integer", path="$.count")
+    assert any("$.count" in msg for msg in w)
+
+
+def test_coerce_value_custom_path_in_error():
+    with pytest.raises(CoerceError) as exc:
+        coerce_value("abc", "integer", path="$.count", strict=True)
+    assert exc.value.path == "$.count"
